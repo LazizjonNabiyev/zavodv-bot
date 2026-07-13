@@ -27,18 +27,12 @@ from google.oauth2.service_account import Credentials
 # sifatida saqlanadi, kod esa ularni shu yerdan o'qiydi.
 #
 # Railway Variables bo'limiga qo'shiladigan nomlar:
-#   BOT_TOKEN            -> BotFather'dan olingan token
-#   GOOGLE_SHEET_NAME     -> Google Sheets jadval nomi (ixtiyoriy, default bor)
-#   GOOGLE_CREDENTIALS_JSON -> credentials.json faylining TO'LIQ MATNI
+#   BOT_TOKEN               -> BotFather'dan olingan token
+#   GOOGLE_SHEET_NAME        -> Google Sheets jadval nomi (ixtiyoriy, default bor)
+#   GOOGLE_CREDENTIALS_JSON  -> credentials.json faylining TO'LIQ MATNI
 
 BOT_TOKEN = os.environ["BOT_TOKEN"].strip()
 GOOGLE_SHEET_NAME = os.environ.get("GOOGLE_SHEET_NAME", "Zavod ishchilari")
-
-# --- VAQTINCHALIK TEKSHIRUV: muammo topilgach o'chirib tashlanadi ---
-print(f"[DEBUG] Token uzunligi: {len(BOT_TOKEN)}")
-print(f"[DEBUG] Boshi: {BOT_TOKEN[:6]!r}  Oxiri: {BOT_TOKEN[-6:]!r}")
-print(f"[DEBUG] ':' bormi: {':' in BOT_TOKEN}")
-# ------------------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
 
@@ -54,8 +48,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# credentials.json ning ichidagi matn to'g'ridan-to'g'ri
-# GOOGLE_CREDENTIALS_JSON muhit o'zgaruvchisidan olinadi
 credentials_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
 creds = Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
 gc = gspread.authorize(creds)
@@ -64,14 +56,16 @@ sheet = gc.open(GOOGLE_SHEET_NAME).sheet1
 # Agar jadval bo'sh bo'lsa, sarlavhalarni qo'yamiz
 HEADERS = [
     "Sana",
+    "Telefon",
     "Telegram ID",
     "Username",
     "Ism",
     "Familiya",
     "Yosh",
+    "Holat",
     "Amal",
     "Lavozim",
-    "Sabab",
+    "Xabar / Sabab",
 ]
 if sheet.row_values(1) != HEADERS:
     sheet.insert_row(HEADERS, 1)
@@ -81,14 +75,16 @@ def add_row_to_sheet(data: dict):
     """Google Sheets'ga yangi qator qo'shadi (real-time)."""
     row = [
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        data.get("telefon", "-"),
         data.get("user_id", ""),
         data.get("username", ""),
         data.get("ism", ""),
         data.get("familiya", ""),
         data.get("yosh", ""),
+        data.get("holat", "-"),
         data.get("amal", ""),
         data.get("lavozim", "-"),
-        data.get("sabab", ""),
+        data.get("xabar", "-"),
     ]
     sheet.append_row(row, value_input_option="USER_ENTERED")
 
@@ -98,9 +94,13 @@ def add_row_to_sheet(data: dict):
 # =========================================================
 
 class Registration(StatesGroup):
+    telefon = State()
     ism = State()
     familiya = State()
     yosh = State()
+    holat = State()
+    lavozim = State()
+    lavozim_matn = State()
 
 
 class Ketish(StatesGroup):
@@ -108,19 +108,24 @@ class Ketish(StatesGroup):
     sabab_matn = State()
 
 
-class YangiIsh(StatesGroup):
-    lavozim = State()
-    lavozim_matn = State()
+class TaklifShikoyat(StatesGroup):
+    matn = State()
 
 
 # =========================================================
 #                       KLAVIATURALAR
 # =========================================================
 
-main_menu = ReplyKeyboardMarkup(
+telefon_menu = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text="📱 Raqamni yuborish", request_contact=True)]],
+    resize_keyboard=True,
+    one_time_keyboard=True,
+)
+
+holat_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🆕 Yangi ishga kirish")],
-        [KeyboardButton(text="🚪 Ishdan ketish / bo'shash")],
+        [KeyboardButton(text="✅ Hozir ishlayapman")],
+        [KeyboardButton(text="🆕 Yangi ishga kirmoqchiman")],
     ],
     resize_keyboard=True,
 )
@@ -134,6 +139,14 @@ lavozim_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text="🛡️ Qorovul")],
         [KeyboardButton(text="📦 Ombor xodimi")],
         [KeyboardButton(text="✍️ Boshqa (o'zim yozaman)")],
+    ],
+    resize_keyboard=True,
+)
+
+main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🚪 Ishdan ketish / bo'shash")],
+        [KeyboardButton(text="💬 Taklif va shikoyat")],
     ],
     resize_keyboard=True,
 )
@@ -152,7 +165,7 @@ sabab_menu = ReplyKeyboardMarkup(
 
 
 # =========================================================
-#                       HANDLERLAR
+#                HANDLERLAR — RO'YXATDAN O'TISH
 # =========================================================
 
 @dp.message(CommandStart())
@@ -160,10 +173,27 @@ async def start_handler(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         "Assalomu alaykum! Zavod xodimlari uchun botga xush kelibsiz.\n\n"
-        "Ro'yxatdan o'tish uchun ismingizni kiriting:",
+        "Ro'yxatdan o'tish uchun telefon raqamingizni yuboring:",
+        reply_markup=telefon_menu,
+    )
+    await state.set_state(Registration.telefon)
+
+
+@dp.message(Registration.telefon, F.contact)
+async def get_telefon(message: Message, state: FSMContext):
+    await state.update_data(telefon=message.contact.phone_number)
+    await message.answer(
+        "Rahmat! Endi ismingizni kiriting:",
         reply_markup=ReplyKeyboardRemove(),
     )
     await state.set_state(Registration.ism)
+
+
+@dp.message(Registration.telefon)
+async def telefon_notogri(message: Message, state: FSMContext):
+    await message.answer(
+        "Iltimos, pastdagi \"📱 Raqamni yuborish\" tugmasini bosib, raqamingizni yuboring."
+    )
 
 
 @dp.message(Registration.ism)
@@ -187,71 +217,102 @@ async def get_yosh(message: Message, state: FSMContext):
         return
 
     await state.update_data(yosh=message.text.strip())
+    await message.answer(
+        "Siz hozir zavodda ishlaysizmi yoki yangi ishga kirmoqchimisiz?",
+        reply_markup=holat_menu,
+    )
+    await state.set_state(Registration.holat)
+
+
+@dp.message(Registration.holat, F.text == "✅ Hozir ishlayapman")
+async def holat_ishlayapman(message: Message, state: FSMContext):
+    await state.update_data(holat="Hozir ishlayapti")
     data = await state.get_data()
+
+    add_row_to_sheet(
+        {
+            "telefon": data.get("telefon"),
+            "user_id": message.from_user.id,
+            "username": message.from_user.username or "-",
+            "ism": data.get("ism"),
+            "familiya": data.get("familiya"),
+            "yosh": data.get("yosh"),
+            "holat": "Hozir ishlayapti",
+            "amal": "Ro'yxatdan o'tdi",
+        }
+    )
 
     await message.answer(
         f"Rahmat, {data['ism']}! Ro'yxatdan muvaffaqiyatli o'tdingiz ✅\n\n"
         "Quyidagilardan birini tanlang:",
         reply_markup=main_menu,
     )
-    # Holatni to'liq tozalamaymiz - ism/familiya/yosh keyingi bosqichlarda kerak bo'ladi
     await state.set_state(None)
 
 
-@dp.message(F.text == "🆕 Yangi ishga kirish")
-async def yangi_ish(message: Message, state: FSMContext):
-    data = await state.get_data()
-    if "ism" not in data:
-        await message.answer("Iltimos, avval /start orqali ro'yxatdan o'ting.")
-        return
-
+@dp.message(Registration.holat, F.text == "🆕 Yangi ishga kirmoqchiman")
+async def holat_yangi_ish(message: Message, state: FSMContext):
+    await state.update_data(holat="Yangi ishga kirmoqchi")
     await message.answer(
         "Qaysi lavozimga topshirmoqchisiz?",
         reply_markup=lavozim_menu,
     )
-    await state.set_state(YangiIsh.lavozim)
+    await state.set_state(Registration.lavozim)
 
 
-@dp.message(YangiIsh.lavozim, F.text == "✍️ Boshqa (o'zim yozaman)")
+@dp.message(Registration.holat)
+async def holat_notogri(message: Message, state: FSMContext):
+    await message.answer("Iltimos, pastdagi tugmalardan birini tanlang.")
+
+
+@dp.message(Registration.lavozim, F.text == "✍️ Boshqa (o'zim yozaman)")
 async def lavozim_ozi_yozadi(message: Message, state: FSMContext):
     await message.answer(
         "Lavozim nomini matn ko'rinishida yozing:",
         reply_markup=ReplyKeyboardRemove(),
     )
-    await state.set_state(YangiIsh.lavozim_matn)
+    await state.set_state(Registration.lavozim_matn)
 
 
-@dp.message(YangiIsh.lavozim_matn)
+@dp.message(Registration.lavozim_matn)
 async def lavozim_matn_olish(message: Message, state: FSMContext):
-    await yangi_ish_yakunlash(message, state, lavozim=message.text.strip())
+    await lavozim_yakunlash(message, state, lavozim=message.text.strip())
 
 
-@dp.message(YangiIsh.lavozim)
+@dp.message(Registration.lavozim)
 async def lavozim_tanlash(message: Message, state: FSMContext):
-    await yangi_ish_yakunlash(message, state, lavozim=message.text.strip())
+    await lavozim_yakunlash(message, state, lavozim=message.text.strip())
 
 
-async def yangi_ish_yakunlash(message: Message, state: FSMContext, lavozim: str):
+async def lavozim_yakunlash(message: Message, state: FSMContext, lavozim: str):
     data = await state.get_data()
 
     add_row_to_sheet(
         {
+            "telefon": data.get("telefon"),
             "user_id": message.from_user.id,
             "username": message.from_user.username or "-",
             "ism": data.get("ism"),
             "familiya": data.get("familiya"),
             "yosh": data.get("yosh"),
-            "amal": "Yangi ishga kirdi",
+            "holat": "Yangi ishga kirmoqchi",
+            "amal": "Ro'yxatdan o'tdi",
             "lavozim": lavozim,
-            "sabab": "-",
         }
     )
+
+    await state.update_data(lavozim=lavozim)
     await message.answer(
-        f"Tabriklaymiz! \"{lavozim}\" lavozimiga topshirganingiz qayd qilindi ✅",
+        f"Rahmat, {data['ism']}! \"{lavozim}\" lavozimiga topshirganingiz qayd qilindi ✅\n\n"
+        "Quyidagilardan birini tanlang:",
         reply_markup=main_menu,
     )
     await state.set_state(None)
 
+
+# =========================================================
+#              HANDLERLAR — ISHDAN KETISH
+# =========================================================
 
 @dp.message(F.text == "🚪 Ishdan ketish / bo'shash")
 async def ishdan_ketish(message: Message, state: FSMContext):
@@ -278,31 +339,76 @@ async def sabab_ozi_yozadi(message: Message, state: FSMContext):
 
 @dp.message(Ketish.sabab_matn)
 async def sabab_matn_olish(message: Message, state: FSMContext):
-    await yozish_va_yakunlash(message, state, sabab=message.text.strip())
+    await ketish_yakunlash(message, state, sabab=message.text.strip())
 
 
 @dp.message(Ketish.sabab)
 async def sabab_tanlash(message: Message, state: FSMContext):
-    await yozish_va_yakunlash(message, state, sabab=message.text.strip())
+    await ketish_yakunlash(message, state, sabab=message.text.strip())
 
 
-async def yozish_va_yakunlash(message: Message, state: FSMContext, sabab: str):
+async def ketish_yakunlash(message: Message, state: FSMContext, sabab: str):
     data = await state.get_data()
 
     add_row_to_sheet(
         {
+            "telefon": data.get("telefon"),
             "user_id": message.from_user.id,
             "username": message.from_user.username or "-",
             "ism": data.get("ism"),
             "familiya": data.get("familiya"),
             "yosh": data.get("yosh"),
+            "holat": data.get("holat", "-"),
             "amal": "Ishdan ketmoqchi",
-            "sabab": sabab,
+            "xabar": sabab,
         }
     )
 
     await message.answer(
         "Rahmat! Javobingiz qayd qilindi. Tez orada siz bilan bog'lanishadi 🙏",
+        reply_markup=main_menu,
+    )
+    await state.set_state(None)
+
+
+# =========================================================
+#            HANDLERLAR — TAKLIF VA SHIKOYAT
+# =========================================================
+
+@dp.message(F.text == "💬 Taklif va shikoyat")
+async def taklif_shikoyat(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if "ism" not in data:
+        await message.answer("Iltimos, avval /start orqali ro'yxatdan o'ting.")
+        return
+
+    await message.answer(
+        "Taklif yoki shikoyatingizni matn ko'rinishida yozing:",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await state.set_state(TaklifShikoyat.matn)
+
+
+@dp.message(TaklifShikoyat.matn)
+async def taklif_matn_olish(message: Message, state: FSMContext):
+    data = await state.get_data()
+
+    add_row_to_sheet(
+        {
+            "telefon": data.get("telefon"),
+            "user_id": message.from_user.id,
+            "username": message.from_user.username or "-",
+            "ism": data.get("ism"),
+            "familiya": data.get("familiya"),
+            "yosh": data.get("yosh"),
+            "holat": data.get("holat", "-"),
+            "amal": "Taklif / Shikoyat",
+            "xabar": message.text.strip(),
+        }
+    )
+
+    await message.answer(
+        "Rahmat! Fikringiz qayd qilindi ✅",
         reply_markup=main_menu,
     )
     await state.set_state(None)
