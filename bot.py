@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import os
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F
@@ -20,10 +22,23 @@ from google.oauth2.service_account import Credentials
 # =========================================================
 #                      SOZLAMALAR
 # =========================================================
+# MUHIM: Tokenlar va kalitlar kodga YOZILMAYDI!
+# Ular Railway'ning "Variables" bo'limida muhit o'zgaruvchisi
+# sifatida saqlanadi, kod esa ularni shu yerdan o'qiydi.
+#
+# Railway Variables bo'limiga qo'shiladigan nomlar:
+#   BOT_TOKEN            -> BotFather'dan olingan token
+#   GOOGLE_SHEET_NAME     -> Google Sheets jadval nomi (ixtiyoriy, default bor)
+#   GOOGLE_CREDENTIALS_JSON -> credentials.json faylining TO'LIQ MATNI
 
-BOT_TOKEN = "SIZNING_BOT_TOKENINGIZ"          # @BotFather dan olinadi
-GOOGLE_SHEET_NAME = "zavod bot"        # Google Sheets faylining nomi
-CREDENTIALS_FILE = "credentials.json"         # Google Service Account kaliti
+BOT_TOKEN = os.environ["BOT_TOKEN"].strip()
+GOOGLE_SHEET_NAME = os.environ.get("GOOGLE_SHEET_NAME", "Zavod ishchilari")
+
+# --- VAQTINCHALIK TEKSHIRUV: muammo topilgach o'chirib tashlanadi ---
+print(f"[DEBUG] Token uzunligi: {len(BOT_TOKEN)}")
+print(f"[DEBUG] Boshi: {BOT_TOKEN[:6]!r}  Oxiri: {BOT_TOKEN[-6:]!r}")
+print(f"[DEBUG] ':' bormi: {':' in BOT_TOKEN}")
+# ------------------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
 
@@ -39,7 +54,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+# credentials.json ning ichidagi matn to'g'ridan-to'g'ri
+# GOOGLE_CREDENTIALS_JSON muhit o'zgaruvchisidan olinadi
+credentials_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
+creds = Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
 gc = gspread.authorize(creds)
 sheet = gc.open(GOOGLE_SHEET_NAME).sheet1
 
