@@ -70,6 +70,7 @@ HEADERS = [
     "Familiya",
     "Yosh",
     "Amal",
+    "Lavozim",
     "Sabab",
 ]
 if sheet.row_values(1) != HEADERS:
@@ -86,6 +87,7 @@ def add_row_to_sheet(data: dict):
         data.get("familiya", ""),
         data.get("yosh", ""),
         data.get("amal", ""),
+        data.get("lavozim", "-"),
         data.get("sabab", ""),
     ]
     sheet.append_row(row, value_input_option="USER_ENTERED")
@@ -106,6 +108,11 @@ class Ketish(StatesGroup):
     sabab_matn = State()
 
 
+class YangiIsh(StatesGroup):
+    lavozim = State()
+    lavozim_matn = State()
+
+
 # =========================================================
 #                       KLAVIATURALAR
 # =========================================================
@@ -114,6 +121,19 @@ main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🆕 Yangi ishga kirish")],
         [KeyboardButton(text="🚪 Ishdan ketish / bo'shash")],
+    ],
+    resize_keyboard=True,
+)
+
+lavozim_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🔧 Ishchi")],
+        [KeyboardButton(text="⚙️ Usta / Ustaxona boshlig'i")],
+        [KeyboardButton(text="🧑‍💼 Muhandis")],
+        [KeyboardButton(text="🚚 Haydovchi")],
+        [KeyboardButton(text="🛡️ Qorovul")],
+        [KeyboardButton(text="📦 Ombor xodimi")],
+        [KeyboardButton(text="✍️ Boshqa (o'zim yozaman)")],
     ],
     resize_keyboard=True,
 )
@@ -185,6 +205,35 @@ async def yangi_ish(message: Message, state: FSMContext):
         await message.answer("Iltimos, avval /start orqali ro'yxatdan o'ting.")
         return
 
+    await message.answer(
+        "Qaysi lavozimga topshirmoqchisiz?",
+        reply_markup=lavozim_menu,
+    )
+    await state.set_state(YangiIsh.lavozim)
+
+
+@dp.message(YangiIsh.lavozim, F.text == "✍️ Boshqa (o'zim yozaman)")
+async def lavozim_ozi_yozadi(message: Message, state: FSMContext):
+    await message.answer(
+        "Lavozim nomini matn ko'rinishida yozing:",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await state.set_state(YangiIsh.lavozim_matn)
+
+
+@dp.message(YangiIsh.lavozim_matn)
+async def lavozim_matn_olish(message: Message, state: FSMContext):
+    await yangi_ish_yakunlash(message, state, lavozim=message.text.strip())
+
+
+@dp.message(YangiIsh.lavozim)
+async def lavozim_tanlash(message: Message, state: FSMContext):
+    await yangi_ish_yakunlash(message, state, lavozim=message.text.strip())
+
+
+async def yangi_ish_yakunlash(message: Message, state: FSMContext, lavozim: str):
+    data = await state.get_data()
+
     add_row_to_sheet(
         {
             "user_id": message.from_user.id,
@@ -193,13 +242,15 @@ async def yangi_ish(message: Message, state: FSMContext):
             "familiya": data.get("familiya"),
             "yosh": data.get("yosh"),
             "amal": "Yangi ishga kirdi",
+            "lavozim": lavozim,
             "sabab": "-",
         }
     )
     await message.answer(
-        "Tabriklaymiz! Yangi ishga kirishingiz qayd qilindi ✅",
+        f"Tabriklaymiz! \"{lavozim}\" lavozimiga topshirganingiz qayd qilindi ✅",
         reply_markup=main_menu,
     )
+    await state.set_state(None)
 
 
 @dp.message(F.text == "🚪 Ishdan ketish / bo'shash")
