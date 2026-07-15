@@ -28,11 +28,13 @@ from google.oauth2.service_account import Credentials
 #
 # Railway Variables bo'limiga qo'shiladigan nomlar:
 #   BOT_TOKEN               -> BotFather'dan olingan token
-#   GOOGLE_SHEET_NAME        -> Google Sheets jadval nomi (ixtiyoriy, default bor)
+#   GOOGLE_SHEET_NAME        -> Google Sheets jadval nomi (ID berilmasa ishlatiladi)
+#   GOOGLE_SHEET_ID          -> Google Sheets jadval ID (tavsiya etiladi, eng ishonchli)
 #   GOOGLE_CREDENTIALS_JSON  -> credentials.json faylining TO'LIQ MATNI
 
 BOT_TOKEN = os.environ["BOT_TOKEN"].strip()
 GOOGLE_SHEET_NAME = os.environ.get("GOOGLE_SHEET_NAME", "Zavod ishchilari")
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "").strip()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,7 +53,16 @@ SCOPES = [
 credentials_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
 creds = Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
 gc = gspread.authorize(creds)
-sheet = gc.open(GOOGLE_SHEET_NAME).sheet1
+
+# GOOGLE_SHEET_ID berilgan bo'lsa ID orqali (eng ishonchli), aks holda nomi orqali ochamiz
+print(f"[DEBUG] GOOGLE_SHEET_ID uzunligi: {len(GOOGLE_SHEET_ID)}")
+if GOOGLE_SHEET_ID:
+    print("[DEBUG] ID orqali ulanmoqda...")
+    sheet = gc.open_by_key(GOOGLE_SHEET_ID).sheet1
+else:
+    print(f"[DEBUG] Nom orqali ulanmoqda: {GOOGLE_SHEET_NAME!r}")
+    sheet = gc.open(GOOGLE_SHEET_NAME).sheet1
+
 
 # Agar jadval bo'sh bo'lsa, sarlavhalarni qo'yamiz
 HEADERS = [
@@ -406,10 +417,41 @@ async def taklif_shikoyat(message: Message, state: FSMContext):
         return
 
     await message.answer(
-        "Taklif yoki shikoyatingizni matn ko'rinishida yozing:",
+        "Qaysi filial bo'yicha murojaat qilmoqchisiz?",
+        reply_markup=filial_menu,
+    )
+    await state.set_state(TaklifShikoyat.filial)
+
+
+@dp.message(TaklifShikoyat.filial, F.text.in_({"Bektemir", "Bo'ka", "Parkent"}))
+async def taklif_filial_olindi(message: Message, state: FSMContext):
+    await state.update_data(filial=message.text.strip())
+    await message.answer(
+        "Murojaat turini tanlang:",
+        reply_markup=murojaat_turi_menu,
+    )
+    await state.set_state(TaklifShikoyat.turi)
+
+
+@dp.message(TaklifShikoyat.filial)
+async def taklif_filial_notogri(message: Message, state: FSMContext):
+    await message.answer("Iltimos, pastdagi tugmalardan filialni tanlang.")
+
+
+@dp.message(TaklifShikoyat.turi, F.text.in_({"💡 Taklif", "⚠️ Shikoyat"}))
+async def taklif_turi_olindi(message: Message, state: FSMContext):
+    turi = "Taklif" if "Taklif" in message.text else "Shikoyat"
+    await state.update_data(murojaat_turi=turi)
+    await message.answer(
+        "Izohingizni (murojaat matnini) yozing:",
         reply_markup=ReplyKeyboardRemove(),
     )
     await state.set_state(TaklifShikoyat.matn)
+
+
+@dp.message(TaklifShikoyat.turi)
+async def taklif_turi_notogri(message: Message, state: FSMContext):
+    await message.answer("Iltimos, pastdagi tugmalardan birini tanlang.")
 
 
 @dp.message(TaklifShikoyat.matn)
@@ -426,12 +468,15 @@ async def taklif_matn_olish(message: Message, state: FSMContext):
             "yosh": data.get("yosh"),
             "holat": data.get("holat", "-"),
             "amal": "Taklif / Shikoyat",
+            "filial": data.get("filial", "-"),
+            "murojaat_turi": data.get("murojaat_turi", "-"),
             "xabar": message.text.strip(),
         }
     )
 
     await message.answer(
-        "Rahmat! Fikringiz qayd qilindi ✅",
+        "Rahmat! Murojaatingiz qabul qilindi va qayd etildi ✅\n\n"
+        "Yangi murojaat qoldirish uchun istalgan vaqtda /start bosishingiz mumkin.",
         reply_markup=main_menu,
     )
     await state.set_state(None)
