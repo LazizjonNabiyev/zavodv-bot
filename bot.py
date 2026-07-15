@@ -219,10 +219,10 @@ async def start_handler(message: Message, state: FSMContext):
 async def get_telefon(message: Message, state: FSMContext):
     await state.update_data(telefon=message.contact.phone_number)
     await message.answer(
-        "Rahmat! Endi ismingizni kiriting:",
-        reply_markup=ReplyKeyboardRemove(),
+        "Rahmat! Qaysi filialga tegishlisiz?",
+        reply_markup=filial_menu,
     )
-    await state.set_state(Registration.ism)
+    await state.set_state(Registration.filial)
 
 
 @dp.message(Registration.telefon)
@@ -230,6 +230,21 @@ async def telefon_notogri(message: Message, state: FSMContext):
     await message.answer(
         "Iltimos, pastdagi \"📱 Raqamni yuborish\" tugmasini bosib, raqamingizni yuboring."
     )
+
+
+@dp.message(Registration.filial, F.text.in_({"Bektemir", "Bo'ka", "Parkent"}))
+async def reg_filial_olindi(message: Message, state: FSMContext):
+    await state.update_data(filial=message.text.strip())
+    await message.answer(
+        "Ismingizni kiriting:",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await state.set_state(Registration.ism)
+
+
+@dp.message(Registration.filial)
+async def reg_filial_notogri(message: Message, state: FSMContext):
+    await message.answer("Iltimos, pastdagi tugmalardan filialni tanlang.")
 
 
 @dp.message(Registration.ism)
@@ -275,6 +290,7 @@ async def holat_ishlayapman(message: Message, state: FSMContext):
             "yosh": data.get("yosh"),
             "holat": "Hozir ishlayapti",
             "amal": "Ro'yxatdan o'tdi",
+            "filial": data.get("filial", "-"),
         }
     )
 
@@ -334,6 +350,7 @@ async def lavozim_yakunlash(message: Message, state: FSMContext, lavozim: str):
             "holat": "Yangi ishga kirmoqchi",
             "amal": "Ro'yxatdan o'tdi",
             "lavozim": lavozim,
+            "filial": data.get("filial", "-"),
         }
     )
 
