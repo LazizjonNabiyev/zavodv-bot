@@ -110,6 +110,7 @@ def add_row_to_sheet(data: dict):
 
 class Registration(StatesGroup):
     telefon = State()
+    filial = State()
     ism = State()
     familiya = State()
     yosh = State()
@@ -119,6 +120,7 @@ class Registration(StatesGroup):
 
 
 class Ketish(StatesGroup):
+    filial = State()
     sabab = State()
     sabab_matn = State()
 
