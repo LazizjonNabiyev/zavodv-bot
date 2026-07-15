@@ -65,6 +65,8 @@ HEADERS = [
     "Holat",
     "Amal",
     "Lavozim",
+    "Filial",
+    "Murojaat turi",
     "Xabar / Sabab",
 ]
 if sheet.row_values(1) != HEADERS:
@@ -84,6 +86,8 @@ def add_row_to_sheet(data: dict):
         data.get("holat", "-"),
         data.get("amal", ""),
         data.get("lavozim", "-"),
+        data.get("filial", "-"),
+        data.get("murojaat_turi", "-"),
         data.get("xabar", "-"),
     ]
     sheet.append_row(row, value_input_option="USER_ENTERED")
@@ -109,6 +113,8 @@ class Ketish(StatesGroup):
 
 
 class TaklifShikoyat(StatesGroup):
+    filial = State()
+    turi = State()
     matn = State()
 
 
@@ -159,6 +165,23 @@ sabab_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text="🏥 Sog'liq sababli")],
         [KeyboardButton(text="🧭 Boshqa ish topdim")],
         [KeyboardButton(text="✍️ Boshqa sabab (o'zim yozaman)")],
+    ],
+    resize_keyboard=True,
+)
+
+filial_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Bektemir")],
+        [KeyboardButton(text="Bo'ka")],
+        [KeyboardButton(text="Parkent")],
+    ],
+    resize_keyboard=True,
+)
+
+murojaat_turi_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="💡 Taklif")],
+        [KeyboardButton(text="⚠️ Shikoyat")],
     ],
     resize_keyboard=True,
 )
